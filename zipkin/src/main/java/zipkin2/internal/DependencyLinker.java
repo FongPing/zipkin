@@ -88,11 +88,11 @@ public final class DependencyLinker {
 
     // Build a tree based on spanId and parentId values
     Node.TreeBuilder<Span> builder = new Node.TreeBuilder<>(logger, MERGE_RPC, first.traceId());
-    builder.addNode(first.parentId(), first.id(), first);
+    builder.addNode(first.parentId(), first.id(), first.shared(), first);
     while (spans.hasNext()) {
       Span next = spans.next();
       list.add(next);
-      builder.addNode(next.parentId(), next.id(), next);
+      builder.addNode(next.parentId(), next.id(), next.shared(), next);
     }
 
     Node<Span> tree = builder.build();
