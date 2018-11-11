@@ -68,6 +68,11 @@ class Node {
   }
 }
 
+// In javascript, dict keys can't be objects
+function keyString(id, shared) {
+  return `${id}-${shared}`;
+}
+
 /*
  * Some operations do not require the entire span object. This creates a tree given (parent id,
  * id) pairs.
@@ -79,17 +84,21 @@ class TreeBuilder {
     if (!traceId) throw new Error('traceId was undefined');
     this._traceId = traceId;
     this._debug = debug;
-    this._rootId = undefined;
+    this._rootKey = undefined;
     this._rootNode = undefined;
     this._entries = [];
       // Nodes representing the trace tree
-    this._idToNode = {};
+    this._keyToNode = {};
       // Collect the parent-child relationships between all spans.
-    this._idToParent = {};
+    this._keyToParent = {};
   }
 
-  // Returns false after logging on debug if the value couldn't be added
-  addNode(parentId, id, value) {
+  // This is a variant of a normal parent/child graph specialized for Zipkin. In a Zipkin tree, a
+  // parent and child can share the same ID if in an RPC. This variant treats a shared node as a
+  // child of any node matching the same ID.
+  //
+  // Returns false after logging to FINE if the value couldn't be added
+  addNode(parentId, id, shared, value) {
     if (parentId && parentId === id) {
       if (this._debug) {
         /* eslint-disable no-console */
@@ -97,44 +106,68 @@ class TreeBuilder {
       }
       return false;
     }
-    this._idToParent[id] = parentId;
-    this._entries.push({parentId, id, value});
+
+    const sharedV = shared === true; // guards against undefined
+
+    // ensure that keyToParent has a key for all entries as this is used to iterate later
+    const idKey = keyString(id, sharedV);
+    let parentKey;
+    if (sharedV) {
+      parentKey = keyString(id, false);
+    } else if (parentId) {
+      parentKey = keyString(parentId, false);
+    }
+
+    this._keyToParent[idKey] = parentKey;
+    this._entries.push({parentId, id, shared: sharedV, value});
     return true;
   }
 
   _processNode(entry) {
-    let parentId = entry.parentId ? entry.parentId : this._idToParent[entry.id];
-    const id = entry.id;
+    const key = keyString(entry.id, entry.shared);
     const value = entry.value;
 
-    if (!parentId) {
-      if (this._rootId) {
+    let parentKey;
+    if (key.shared) {
+      parentKey = keyString(entry.id, false);
+    } else if (entry.parentId) {
+      // Check to see if a shared parent exists, and prefer that. This means the current entry is
+      // a child of a shared node.
+      parentKey = keyString(entry.parentId, true);
+      if (this._keyToParent[parentKey]) {
+        this._keyToParent[key] = parentKey;
+      } else {
+        parentKey = keyString(entry.parentId, false);
+      }
+    }
+
+    if (!parentKey) {
+      if (this._rootKey) {
         if (this._debug) {
           const prefix = 'attributing span missing parent to root';
           /* eslint-disable no-console */
           console.log(
-            `${prefix}: traceId=${this._traceId}, rootSpanId=${this._rootId}, spanId=${id}`
+            `${prefix}: traceId=${this._traceId}, rootKey=${this._rootKey}, key=${key}`
           );
         }
-        parentId = this._rootId;
-        this._idToParent[id] = parentId;
       } else {
-        this._rootId = id;
+        this._rootKey = key;
       }
     }
 
     const node = new Node(value);
     // special-case root, and attribute missing parents to it. In
     // other words, assume that the first root is the "real" root.
-    if (!parentId && !this._rootNode) {
+    if (!parentKey && !this._rootNode) {
       this._rootNode = node;
-      this._rootId = id;
-    } else if (!parentId && this._rootId === id) {
+      this._rootKey = key;
+      delete this._keyToNode[key];
+    } else if (!parentKey && this._rootKey === key) {
       this._rootNode.setValue(this._mergeFunction(this._rootNode.value, node.value));
     } else {
-      const previous = this._idToNode[id];
-      this._idToNode[id] = node;
+      const previous = this._keyToNode[key];
       if (previous) node.setValue(this._mergeFunction(previous.value, node.value));
+      this._keyToNode[key] = node;
     }
   }
 
@@ -150,11 +183,12 @@ class TreeBuilder {
     }
 
     // Materialize the tree using parent - child relationships
-    Object.keys(this._idToParent).forEach(id => {
-      if (id === this._rootId) return; // don't re-process root
+    Object.keys(this._keyToParent).forEach(key => {
+      if (key === this._rootKey) return; // don't re-process root
 
-      const node = this._idToNode[id];
-      const parent = this._idToNode[this._idToParent[id]];
+      const node = this._keyToNode[key];
+      const parent = this._keyToNode[this._keyToParent[key]];
+
       if (!parent) { // handle headless
         this._rootNode.addChild(node);
       } else {
@@ -405,7 +439,7 @@ function correctForClockSkew(spans, debug = false) {
       }
       rootSpanId = next.id;
     }
-    if (!treeBuilder.addNode(next.parentId, next.id, next)) {
+    if (!treeBuilder.addNode(next.parentId, next.id, next.shared, next)) {
       dataError = true;
     }
   });

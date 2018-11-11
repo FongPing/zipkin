@@ -167,25 +167,26 @@ public final class Node<V> {
       boolean sharedV = Boolean.TRUE.equals(shared);
 
       // ensure that keyToParent has a key for all entries as this is used to iterate later
-      Key idKey = new Key(id);
+      Key idKey = new Key(id, sharedV);
+      Key parentKey = null;
       if (sharedV) {
-        keyToParent.put(new Key(id, shared), idKey);
+        parentKey = new Key(id, false);
       } else if (parentId != null) {
-        keyToParent.put(idKey, new Key(parentId));
-      } else {
-        keyToParent.put(idKey, null);
+        parentKey = new Key(parentId, false);
       }
+      keyToParent.put(idKey, parentKey);
 
       entries.add(new Entry<>(parentId, id, sharedV, value));
       return true;
     }
 
     void processNode(Entry<V> entry) {
-      Key key = new Key(entry.id, entry.shared), parentKey = null;
+      Key key = new Key(entry.id, entry.shared);
       V value = entry.value;
 
+      Key parentKey = null;
       if (key.shared) {
-        parentKey = new Key(entry.id);
+        parentKey = new Key(entry.id, false);
       } else if (entry.parentId != null) {
         // Check to see if a shared parent exists, and prefer that. This means the current entry is
         // a child of a shared node.
@@ -193,7 +194,7 @@ public final class Node<V> {
         if (keyToParent.containsKey(parentKey)) {
           keyToParent.put(key, parentKey);
         } else {
-          parentKey.shared = false;
+          parentKey = new Key(entry.parentId, false);
         }
       }
 
@@ -230,23 +231,26 @@ public final class Node<V> {
         processNode(entries.get(i));
       }
 
+      if (rootNode == null) {
+        if (logger.isLoggable(FINE)) {
+          logger.fine("substituting dummy node for missing root span: traceId=" + traceId);
+        }
+        rootNode = new Node<>(null);
+      }
+
       // Materialize the tree using parent - child relationships
       for (Map.Entry<Key, Key> entry : keyToParent.entrySet()) {
+        if (entry.getKey() == rootKey) continue; // don't re-process root
+
         Node<V> node = keyToNode.get(entry.getKey());
         Node<V> parent = keyToNode.get(entry.getValue());
         if (parent == null) { // handle headless
-          if (rootNode == null) {
-            if (logger.isLoggable(FINE)) {
-              logger.fine("substituting dummy node for missing root span: traceId=" + traceId);
-            }
-            rootNode = new Node<>(null);
-          }
           rootNode.addChild(node);
         } else {
           parent.addChild(node);
         }
       }
-      return rootNode != null ? rootNode : new Node<>(null);
+      return rootNode;
     }
   }
 
@@ -254,10 +258,6 @@ public final class Node<V> {
   static final class Key {
     final String id;
     boolean shared;
-
-    Key(String id) {
-      this(id, false);
-    }
 
     Key(String id, boolean shared) {
       this.id = id;
