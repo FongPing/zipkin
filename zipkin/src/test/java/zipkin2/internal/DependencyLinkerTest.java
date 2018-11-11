@@ -273,8 +273,7 @@ public class DependencyLinkerTest {
       span2("a", "a", "b", Kind.SERVER, "server", null, false)
     );
 
-    assertThat(new DependencyLinker()
-      .putTrace(trace.iterator()).link()).containsOnly(
+    assertThat(new DependencyLinker().putTrace(trace.iterator()).link()).containsOnly(
       DependencyLink.newBuilder().parent("client").child("server").callCount(1L).build()
     );
   }

@@ -84,6 +84,7 @@ describe('TreeBuilder', () => {
       {traceId: 'a', id: 'a'},
       {traceId: 'a', parentId: 'a', id: 'b'},
       {traceId: 'a', parentId: 'b', id: 'c'},
+      {traceId: 'a', parentId: 'c', id: 'd'}
     ];
 
     const treeBuilder = new TreeBuilder({traceId: 'a'});

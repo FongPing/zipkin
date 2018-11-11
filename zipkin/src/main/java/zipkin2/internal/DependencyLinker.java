@@ -80,19 +80,20 @@ public final class DependencyLinker {
    * @param spans spans where all spans have the same trace id
    */
   public DependencyLinker putTrace(Iterator<Span> spans) {
-    List<Span> list = new ArrayList<>();
     if (!spans.hasNext()) return this;
     Span first = spans.next();
-    list.add(first);
     if (logger.isLoggable(FINE)) logger.fine("linking trace " + first.traceId());
+
+    // TODO: merge the spans first as that way we can tell the difference between normal merge logic
+    // and linking logic. This code can be taken from Span.Builder and/or javascript spanCleaner
 
     // Build a tree based on spanId and parentId values
     Node.TreeBuilder<Span> builder = new Node.TreeBuilder<>(logger, MERGE_RPC, first.traceId());
-    builder.addNode(first.parentId(), first.id(), first.shared(), first);
+    builder.addNode(first.localServiceName(), first.parentId(), first.id(), first.shared(), first);
     while (spans.hasNext()) {
       Span next = spans.next();
-      list.add(next);
-      builder.addNode(next.parentId(), next.id(), next.shared(), next);
+      // We qualify by servicename as this is the unit of aggregation (vs for example IP address)
+      builder.addNode(first.localServiceName(), next.parentId(), next.id(), next.shared(), next);
     }
 
     Node<Span> tree = builder.build();
