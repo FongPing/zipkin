@@ -107,15 +107,15 @@ export function compare(a, b) {
 export function mergeV2ById(trace) {
   const result = [];
 
-  if (!trace || trace.length === 0) return result;
+  if (!trace || trace.length <= 1) return result;
 
   // this will be the longest trace ID, in case instrumentation report different lengths
-  let traceId;
+  let traceId = normalizeTraceId(trace[0].traceId);
 
   const spanIdToSpans = {};
   trace.forEach((s) => {
     const span = clean(s);
-    if (!traceId || span.traceId.length > traceId.length) traceId = span.traceId;
+    if (traceId.length != 32) traceId = span.traceId; // choose longest
 
     // Make sure IDs are grouped together for merging incomplete span data
     //

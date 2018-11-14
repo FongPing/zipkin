@@ -36,9 +36,9 @@ import static zipkin2.Endpoint.HEX_DIGITS;
  * which nest to form a latency tree. Spans are in the same trace when they share the same trace ID.
  * The {@link #parentId} field establishes the position of one span in the tree.
  *
- * <p>The root span is where {@link #parentId} is null and usually has the longest {@link #duration}
- * in the trace. However, nested asynchronous work can materialize as child spans whose duration
- * exceed the root span.
+ * <p>The root span is where {@link #parentId} is null and usually has the longest {@link
+ * #duration} in the trace. However, nested asynchronous work can materialize as child spans whose
+ * duration exceed the root span.
  *
  * <p>Spans usually represent remote activity such as RPC calls, or messaging producers and
  * consumers. However, they can also represent in-process activity in any position of the trace. For
@@ -50,8 +50,8 @@ import static zipkin2.Endpoint.HEX_DIGITS;
  *
  * <h3>Relationship to {@code zipkin.Span}</h3>
  *
- * <p>This type is intended to replace use of {@code zipkin.Span}. Particularly, tracers represent a
- * single-host view of an operation. By making one endpoint implicit for all data, this type does
+ * <p>This type is intended to replace use of {@code zipkin.Span}. Particularly, tracers represent
+ * a single-host view of an operation. By making one endpoint implicit for all data, this type does
  * not need to repeat endpoints on each data like {@code zipkin.Span} does. This results in simpler
  * and smaller data.
  */
@@ -70,8 +70,8 @@ public final class Span implements Serializable { // for Spark and Flink jobs
   /**
    * Trace identifier, set on all spans within it.
    *
-   * <p>Encoded as 16 or 32 lowercase hex characters corresponding to 64 or 128 bits. For example, a
-   * 128bit trace ID looks like {@code 4e441824ec2b6a44ffdc9bb9a6453df3}.
+   * <p>Encoded as 16 or 32 lowercase hex characters corresponding to 64 or 128 bits. For example,
+   * a 128bit trace ID looks like {@code 4e441824ec2b6a44ffdc9bb9a6453df3}.
    *
    * <p>Some systems downgrade trace identifiers to 64bit by dropping the left-most 16 characters.
    * For example, {@code 4e441824ec2b6a44ffdc9bb9a6453df3} becomes {@code ffdc9bb9a6453df3}.
@@ -141,8 +141,9 @@ public final class Span implements Serializable { // for Spark and Flink jobs
   /**
    * Epoch microseconds of the start of this span, possibly absent if this an incomplete span.
    *
-   * <p>This value should be set directly by instrumentation, using the most precise value possible.
-   * For example, {@code gettimeofday} or multiplying {@link System#currentTimeMillis} by 1000.
+   * <p>This value should be set directly by instrumentation, using the most precise value
+   * possible. For example, {@code gettimeofday} or multiplying {@link System#currentTimeMillis} by
+   * 1000.
    *
    * <p>There are three known edge-cases where this could be reported absent:
    *
@@ -174,9 +175,9 @@ public final class Span implements Serializable { // for Spark and Flink jobs
    * Measurement in microseconds of the critical path, if known. Durations of less than one
    * microsecond must be rounded up to 1 microsecond.
    *
-   * <p>This value should be set directly, as opposed to implicitly via annotation timestamps. Doing
-   * so encourages precision decoupled from problems of clocks, such as skew or NTP updates causing
-   * time to move backwards.
+   * <p>This value should be set directly, as opposed to implicitly via annotation timestamps.
+   * Doing so encourages precision decoupled from problems of clocks, such as skew or NTP updates
+   * causing time to move backwards.
    *
    * <p>If this field is persisted as unset, zipkin will continue to work, except duration query
    * support will be implementation-specific. Similarly, setting this field non-atomically is
@@ -344,6 +345,37 @@ public final class Span implements Serializable { // for Spark and Flink jobs
         tags.putAll(source.tags);
       }
       flags = source.flags;
+    }
+
+    public Builder merge(Span source) {
+      if (parentId == null && source.parentId != null) {
+        if (!source.parentId.equals(id)) parentId = source.parentId;
+      }
+      if (kind == null) kind = source.kind;
+      if (name == null) name = source.name;
+      if (timestamp == 0L) timestamp = source.timestamp;
+      if (duration == 0L) duration = source.duration;
+      if (localEndpoint == null) {
+        localEndpoint = source.localEndpoint;
+      } else {
+        localEndpoint = localEndpoint.toBuilder().merge(source.localEndpoint).build();
+      }
+      if (remoteEndpoint == null) {
+        remoteEndpoint = source.remoteEndpoint;
+      } else {
+        remoteEndpoint = remoteEndpoint.toBuilder().merge(source.remoteEndpoint).build();
+      }
+      if (!source.annotations.isEmpty()) {
+        if (annotations == null) {
+          annotations = new ArrayList<>(source.annotations.size());
+        }
+        annotations.addAll(source.annotations);
+      }
+      if (!source.tags.isEmpty()) {
+        tags.putAll(source.tags);
+      }
+      flags = flags | source.flags;
+      return this;
     }
 
     @Nullable public Kind kind() {
